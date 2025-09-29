@@ -206,3 +206,11 @@ chmod +x install_hook.sh
 
 
 
+
+
+
+
+echo "🚀 ScaleViper ready for Kraken scalping." >> README.md
+git add README.md
+git commit -m "🧪 Test mirror sync"
+git push

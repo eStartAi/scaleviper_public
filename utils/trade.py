@@ -1,43 +1,29 @@
-# utils/trade.py
-# Stub for trade execution logic
+import logging
 
-def place_order(symbol, side, price, units):
-    print(f"[TRADE] {side} {units} {symbol} at {price}")
-    return {"status": "stub", "symbol": symbol, "side": side, "price": price}
-def close_losing_positions():
-    ...
-    for pos in positions:
-        unrealizedPL = float(pos["unrealizedPL"])
-        ...
-import os, json, urllib.request
-from utils.risk import TRAILING_STOP_ENABLED, TRAILING_STOP_PIPS, price_distance_from_pips
+def execute_trade(exchange, symbol, side, order_type="market", price=0, size=0):
+    """
+    Route order to the correct exchange.
+    Extend this with broker-specific API modules.
+    """
+    if exchange == "kraken":
+        return _execute_kraken(symbol, side, order_type, price, size)
 
-OANDA_API_TOKEN = os.getenv("OANDA_API_TOKEN")
-OANDA_ACCOUNT_ID = os.getenv("OANDA_ACCOUNT_ID")
-OANDA_HOST = os.getenv("OANDA_HOST", "https://api-fxpractice.oanda.com")
+    raise ValueError(f"Exchange {exchange} not supported yet.")
 
-def _oanda_req(path, payload):
-    url = f"{OANDA_HOST}/v3/accounts/{OANDA_ACCOUNT_ID}{path}"
-    data = json.dumps(payload).encode()
-    req = urllib.request.Request(url, data=data, method="POST")
-    req.add_header("Content-Type", "application/json")
-    req.add_header("Authorization", f"Bearer {OANDA_API_TOKEN}")
-    with urllib.request.urlopen(req) as r:
-        return json.loads(r.read().decode())
 
-def create_trailing_stop(instrument: str, trade_id: str):
-    if not TRAILING_STOP_ENABLED:
-        return None
-    distance = price_distance_from_pips(instrument, TRAILING_STOP_PIPS)
-    payload = {
-        "trailingStopLossOrder": {
-            "type": "TRAILING_STOP_LOSS",
-            "tradeID": trade_id,
-            "distance": f"{distance:.10f}",
-            "timeInForce": "GTC"
-        }
+def _execute_kraken(symbol, side, order_type, price, size):
+    """
+    Kraken API execution (stub).
+    Replace with actual kraken-python-api calls.
+    """
+    logging.info(f"🐙 Kraken {side.upper()} {symbol} {order_type} {size} @ {price}")
+    # TODO: integrate with `krakenex` or REST API
+    return {
+        "exchange": "kraken",
+        "symbol": symbol,
+        "side": side,
+        "order_type": order_type,
+        "price": price,
+        "size": size,
+        "status": "success_stub"
     }
-    try:
-        return _oanda_req("/orders", payload)
-    except Exception as e:
-        return {"error": str(e)}

@@ -1,178 +1,77 @@
-import os
-import sqlite3
-import json
 from flask import Flask, request, jsonify
-from dotenv import load_dotenv
-import oandapyV20
-import oandapyV20.endpoints.orders as orders
-from datetime import datetime
-
-from utils.filters import ai_gate_allow, record_trade
-from utils.trade import create_trailing_stop
-
-# Load environment
-load_dotenv()
-API_KEY = os.getenv("OANDA_API_TOKEN")
-ACCOUNT_ID = os.getenv("OANDA_ACCOUNT_ID")
-WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
-BROKER = os.getenv("DEFAULT_BROKER", "oanda_practice")
+import os
+import logging
+from utils.trade import execute_trade
+from utils.risk import validate_risk
+from utils.logger import log_trade
 
 app = Flask(__name__)
 
-# DB setup
-DB_FILE = "trade_logs.db"
-conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-cur = conn.cursor()
-cur.execute("""
-CREATE TABLE IF NOT EXISTS trades (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    symbol TEXT,
-    side TEXT,
-    price REAL,
-    units INTEGER,
-    sl REAL,
-    tp REAL,
-    trail REAL,
-    status TEXT,
-    created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+# ===========================
+# 🔑 Config
+# ===========================
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "change_me_secret")
+APP_PORT = int(os.getenv("APP_PORT", 5001))
+DRY_RUN = int(os.getenv("DRY_RUN", "1")) == 1
+
+EXCHANGE = os.getenv("EXCHANGE", "kraken")  # default = Kraken
+
+# ===========================
+# 📝 Logging setup
+# ===========================
+os.makedirs("logs", exist_ok=True)
+logging.basicConfig(
+    filename="logs/scaleviper.log",
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s: %(message)s"
 )
-""")
-conn.commit()
 
-# OANDA client
-if not API_KEY or not ACCOUNT_ID:
-    raise EnvironmentError("Missing OANDA_API_TOKEN or OANDA_ACCOUNT_ID in .env")
-client = oandapyV20.API(access_token=API_KEY)
-
-# Helper: calculate position size
-def calc_units(balance, risk_pct, stop_loss_pips, pip_value=10):
-    risk_amount = balance * (risk_pct / 100)
-    units = int(risk_amount / (stop_loss_pips * pip_value))
-    return max(units, 1)
-
-# Helper: get account balance
-def get_balance():
-    try:
-        from oandapyV20.endpoints.accounts import AccountSummary
-        r = AccountSummary(ACCOUNT_ID)
-        client.request(r)
-        return float(r.response["account"]["balance"])
-    except Exception:
-        return 10000.0  # fallback for practice
-
-# Validation
-def validate_alert(data):
-    required = ["symbol", "side", "price", "secret"]
-    for field in required:
-        if field not in data:
-            return False, f"Missing field: {field}"
-
-    provided_secret = data["secret"]
-    expected_secret = WEBHOOK_SECRET
-    print(f"🔑 Comparing secrets: provided='{provided_secret}' expected='{expected_secret}'")
-
-    if provided_secret != expected_secret:
-        return False, "Invalid webhook secret"
-
-    try:
-        price = float(data["price"])
-        if price <= 0:
-            return False, "Invalid price"
-    except ValueError:
-        return False, "Price not numeric"
-
-    return True, "ok"
-
-@app.route("/dashboard")
-def dashboard():
-    rows = cur.execute("SELECT symbol, side, price, units, sl, tp, status, created FROM trades ORDER BY id DESC LIMIT 10").fetchall()
-    trades = [dict(zip(["symbol", "side", "price", "units", "sl", "tp", "status", "created"], row)) for row in rows]
-    return jsonify({"recent_trades": trades})
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.get_json(force=True)
-    print("📩 Webhook Received:", data)
+    """
+    Accepts incoming trade signals (e.g., from TradingView).
+    Expects JSON payload with keys: secret, symbol, side, type, price, size.
+    """
 
-    valid, msg = validate_alert(data)
-    if not valid:
-        return jsonify({"status": "error", "message": msg}), 400
+    data = request.get_json()
 
-    symbol = data["symbol"]
-    side = data["side"].lower()
-    price = float(data["price"])
-    trail = float(data.get("trail", 0.0))
-
-    # ✅ AI filter logic
-    allowed, reason = ai_gate_allow(symbol)
-    if not allowed:
-        print(f"⛔️ Blocked by AI filter: {reason}")
-        return jsonify({"status": "blocked", "reason": reason}), 200
-
-    # Position size and SL/TP
-    balance = get_balance()
-    stop_loss_pips = 20  # placeholder
-    units = calc_units(balance, 1, stop_loss_pips)
-
-    sl = round(price - 0.0020, 5) if side == "buy" else round(price + 0.0020, 5)
-    tp = round(price + 0.0050, 5) if side == "buy" else round(price - 0.0050, 5)
-
-    # Save to DB
-    cur.execute(
-        "INSERT INTO trades (symbol, side, price, units, sl, tp, trail, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (symbol, side, price, units, sl, tp, trail, "PENDING")
-    )
-    conn.commit()
-    print(f"✅ Alert saved to DB: {symbol} {side} at {price}")
-
-    # OANDA order
-    order = {
-        "order": {
-            "instrument": symbol,
-            "units": str(units if side == "buy" else -units),
-            "type": "MARKET",
-            "timeInForce": "FOK",
-            "positionFill": "DEFAULT",
-            "takeProfitOnFill": {"price": str(tp)},
-            "stopLossOnFill": {"price": str(sl)}
-        }
-    }
+    # 1. Security check
+    if data.get("secret") != WEBHOOK_SECRET:
+        logging.warning("❌ Unauthorized webhook attempt.")
+        return jsonify({"error": "Invalid secret"}), 403
 
     try:
-        r = orders.OrderCreate(ACCOUNT_ID, data=order)
-        client.request(r)
-        cur.execute("UPDATE trades SET status=? WHERE id=(SELECT MAX(id) FROM trades)", ("EXECUTED",))
-        conn.commit()
-        print("✅ Trade Executed:", r.response)
+        symbol = data.get("symbol")
+        side = data.get("side")  # buy/sell
+        order_type = data.get("type", "market")
+        price = float(data.get("price", 0))
+        size = float(data.get("size", 0))  # optional fixed size
 
-        # ✅ Add trailing stop + AI timer
-        trade_id = None
-        try:
-            oft = r.response.get("orderFillTransaction") or {}
-            if "tradeOpened" in oft:
-                trade_id = oft["tradeOpened"]["tradeID"]
-            elif "tradesOpened" in oft:
-                trade_id = oft["tradesOpened"][0]["tradeID"]
-        except:
-            pass
+        logging.info(f"📩 Incoming signal: {data}")
 
-        if trade_id:
-            create_trailing_stop(symbol, trade_id)
+        # 2. Validate risk
+        if not validate_risk(symbol, side, price, size):
+            logging.warning("⚠️ Risk validation failed.")
+            return jsonify({"error": "Risk check failed"}), 400
 
-        record_trade(symbol)
+        # 3. Execute trade
+        if DRY_RUN:
+            logging.info(f"🧪 DRY_RUN: Simulated {side.upper()} {symbol} @ {price}")
+            trade_result = {"status": "dry_run", "symbol": symbol, "side": side, "price": price}
+        else:
+            trade_result = execute_trade(EXCHANGE, symbol, side, order_type, price, size)
 
-        return jsonify({"status": "ok", "response": r.response})
+        # 4. Log trade
+        log_trade(trade_result)
+
+        return jsonify({"response": trade_result})
 
     except Exception as e:
-        cur.execute("UPDATE trades SET status=? WHERE id=(SELECT MAX(id) FROM trades)", ("FAILED",))
-        conn.commit()
-        print("❌ Error executing trade:", e)
-        return jsonify({"status": "error", "message": str(e)}), 500
+        logging.error(f"💥 Error: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
 
-@app.route("/auto_close")
-def auto_close():
-    return jsonify({"status": "stub", "message": "Auto-close not yet implemented"})
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5001))
-    app.run(host="0.0.0.0", port=port)
+    print(f"🚀 ScaleViper starting on port {APP_PORT} (Exchange={EXCHANGE}, DRY_RUN={DRY_RUN})")
+    app.run(host="0.0.0.0", port=APP_PORT)
