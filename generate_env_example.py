@@ -1,3 +1,4 @@
+example_env = """
 # ========== MODE ==========
 DEFAULT_BROKER=oanda        # Options: oanda, oanda_live, kraken
 DRY_RUN=True                # Set to False to enable real trades
@@ -29,3 +30,9 @@ WEBHOOK_SECRET=your_webhook_secret
 
 # ========== LOGGING ==========
 LOG_LEVEL=INFO
+""".strip()
+
+with open(".env.example", "w") as f:
+    f.write(example_env + "\n")
+
+print("✅ .env.example created successfully.")

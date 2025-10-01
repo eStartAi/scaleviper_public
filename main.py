@@ -1,9 +1,31 @@
 from flask import Flask, request, jsonify
+<<<<<<< HEAD
 import os
 import logging
 from utils.trade import execute_trade
 from utils.risk import validate_risk
 from utils.logger import log_trade
+=======
+from dotenv import load_dotenv
+import oandapyV20
+import oandapyV20.endpoints.orders as orders
+from datetime import datetime
+
+from utils.filters import ai_gate_allow, record_trade
+from utils.trade import create_trailing_stop
+from dotenv import load_dotenv
+load_dotenv()
+
+# Validate .env before continuing
+import validate_env
+
+# Load environment
+load_dotenv()
+API_KEY = os.getenv("OANDA_API_TOKEN")
+ACCOUNT_ID = os.getenv("OANDA_ACCOUNT_ID")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
+BROKER = os.getenv("DEFAULT_BROKER", "oanda_practice")
+>>>>>>> 9504e00 (🔄 Auto-sync 2025-10-01 07:39:17)
 
 app = Flask(__name__)
 
