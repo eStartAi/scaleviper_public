@@ -22,7 +22,7 @@ git commit -m "$COMMIT_MSG" --allow-empty
 echo -e "${YELLOW}📥 Pulling latest changes from origin/main...${NC}"
 if ! git pull origin main --rebase; then
     echo -e "${RED}❌ Rebase failed. Manual resolution required.${NC}"
-    TELEGRAM_MESSAGE="⚠️ Git Safe Sync FAILED (rebase conflict) on $(hostname)" python3 notify.py
+    TELEGRAM_MESSAGE="⚠️ Git Safe Sync FAILED (rebase conflict) on $(hostname)" python3 notify.py 2>> logs/telegram_errors.log
     exit 1
 fi
 
@@ -32,7 +32,7 @@ if git push origin main; then
     echo -e "${GREEN}✅ Pushed to private repo${NC}"
 else
     echo -e "${RED}❌ Failed to push to private repo${NC}"
-    TELEGRAM_MESSAGE="⚠️ Git Safe Sync FAILED (origin push) on $(hostname)" python3 notify.py
+    TELEGRAM_MESSAGE="⚠️ Git Safe Sync FAILED (origin push) on $(hostname)" python3 notify.py 2>> logs/telegram_errors.log
     exit 2
 fi
 
@@ -43,11 +43,11 @@ if git remote get-url public > /dev/null 2>&1; then
         echo -e "${GREEN}✅ Public repo mirror updated${NC}"
     else
         echo -e "${RED}❌ Failed to push to public repo${NC}"
-        TELEGRAM_MESSAGE="⚠️ Git Safe Sync FAILED (public push) on $(hostname)" python3 notify.py
+        TELEGRAM_MESSAGE="⚠️ Git Safe Sync FAILED (public push) on $(hostname)" python3 notify.py 2>> logs/telegram_errors.log
         exit 3
     fi
 fi
 
 # Step 6. Success notification
-TELEGRAM_MESSAGE="✅ Git Safe Sync SUCCESS on $(hostname)" python3 notify.py
+TELEGRAM_MESSAGE="✅ Git Safe Sync SUCCESS on $(hostname)" python3 notify.py 2>> logs/telegram_errors.log
 echo -e "${GREEN}🎉 Git Safe Sync completed successfully${NC}"
