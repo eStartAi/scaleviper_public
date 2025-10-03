@@ -1,49 +1,46 @@
 #!/bin/bash
-# manage_backups.sh
-# Usage:
-#   ./manage_backups.sh save          -> creates next version for main.py & auto_close.py
-#   ./manage_backups.sh promote main <num> -> promotes main_V<num>.py to main_backup.py
-#   ./manage_backups.sh promote auto <num> -> promotes auto_close_V<num>.py to auto_close_backup.py
 
-# Save mode: create new version snapshots
-if [ "$1" == "save" ]; then
-  # Main.py
-  latest_main=$(ls main_V*.py 2>/dev/null | sed -E 's/.*V([0-9]+)\.py/\1/' | sort -n | tail -1)
-  next_main=$((latest_main + 1))
-  cp main.py main_V${next_main}.py
-  echo "✅ Saved main.py as main_V${next_main}.py"
+# === Config ===
+BACKUP_DIR="backups"
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+TARGET_DIR="$BACKUP_DIR/backup_$TIMESTAMP"
 
-  # Auto_close.py
-  latest_auto=$(ls auto_close_V*.py 2>/dev/null | sed -E 's/.*V([0-9]+)\.py/\1/' | sort -n | tail -1)
-  next_auto=$((latest_auto + 1))
-  cp auto_close.py auto_close_V${next_auto}.py
-  echo "✅ Saved auto_close.py as auto_close_V${next_auto}.py"
+# === Load Telegram vars from .env ===
+source <(grep -v '^#' .env | xargs -d '\n')
 
-# Promote mode: copy version to backup
-elif [ "$1" == "promote" ] && [ -n "$2" ] && [ -n "$3" ]; then
-  if [ "$2" == "main" ]; then
-    version="main_V$3.py"
-    if [ -f "$version" ]; then
-      cp "$version" main_backup.py
-      echo "🔄 Promoted $version → main_backup.py"
-    else
-      echo "❌ Version $version not found!"
-    fi
-  elif [ "$2" == "auto" ]; then
-    version="auto_close_V$3.py"
-    if [ -f "$version" ]; then
-      cp "$version" auto_close_backup.py
-      echo "🔄 Promoted $version → auto_close_backup.py"
-    else
-      echo "❌ Version $version not found!"
-    fi
-  else
-    echo "❌ Unknown target: $2 (use 'main' or 'auto')"
+send_telegram() {
+  if [[ "$ENABLE_TELEGRAM_ALERTS" == "true" && -n "$TELEGRAM_BOT_TOKEN" && -n "$TELEGRAM_CHAT_ID" ]]; then
+    curl -s -X POST https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage \
+      -d chat_id="$TELEGRAM_CHAT_ID" \
+      -d text="📦 ScaleViper backup saved: $TARGET_DIR"
   fi
+}
 
+# === Handle commands ===
+if [[ "$1" == "save" ]]; then
+  echo "🔒 Saving backup to $TARGET_DIR"
+
+  mkdir -p "$TARGET_DIR"
+
+  cp .env "$TARGET_DIR/.env"
+  cp main.py "$TARGET_DIR/main.py"
+  cp trade_logs.db "$TARGET_DIR/trade_logs.db" 2>/dev/null || echo "(ℹ️ trade_logs.db not found)"
+  cp -r utils "$TARGET_DIR/" 2>/dev/null || echo "(ℹ️ utils/ not found)"
+
+  echo "✅ Backup complete: $TARGET_DIR"
+  send_telegram
+
+elif [[ "$1" == "promote" ]]; then
+  TYPE="$2"
+  NUM="$3"
+  if [[ -z "$TYPE" || -z "$NUM" ]]; then
+    echo "❌ Usage: manage_backups.sh promote [main|auto] <num>"
+    exit 1
+  fi
+  echo "🚀 Promoting backup $NUM of type $TYPE (not implemented)"
 else
   echo "Usage:"
-  echo "  $0 save"
-  echo "  $0 promote main <num>"
-  echo "  $0 promote auto <num>"
+  echo "  manage_backups.sh save"
+  echo "  manage_backups.sh promote main <num>"
+  echo "  manage_backups.sh promote auto <num>"
 fi

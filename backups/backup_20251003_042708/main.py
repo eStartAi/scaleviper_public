@@ -19,10 +19,10 @@ from utils.logger import log_trade
 
 # === Load environment ===
 load_dotenv()
-RUN_MODE = os.getenv("RUN_MODE", "auto").lower()   # "auto", "webhook", or "sandbox"
+RUN_MODE = os.getenv("RUN_MODE", "auto").lower()   # "auto" or "webhook"
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "change_me_secret")
-APP_PORT = int(os.getenv("APP_PORT", 5003))        # Default 5003 for ScaleViper
-EXCHANGE = os.getenv("DEFAULT_BROKER", "kraken")   # Default Kraken for crypto
+APP_PORT = int(os.getenv("APP_PORT", 5003))        # Default to 5003 for ScaleViper (Crypto)
+EXCHANGE = os.getenv("DEFAULT_BROKER", "kraken")   # Default to kraken (Crypto)
 
 # === Logging setup ===
 os.makedirs("logs", exist_ok=True)
@@ -57,7 +57,7 @@ def dashboard():
     })
 
 # ===================================================
-# AUTO MODE
+# AUTO MODE: Self-Trading ScaleViper
 # ===================================================
 def fetch_indicator_data(pair):
     """Mock/replace with real exchange or data feed."""
@@ -120,7 +120,7 @@ def run_auto_bot():
     print(summary)
 
 # ===================================================
-# WEBHOOK MODE
+# WEBHOOK MODE: Signal Executor
 # ===================================================
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -132,7 +132,7 @@ def webhook():
 
     try:
         symbol = data.get("symbol")
-        side = data.get("side")
+        side = data.get("side")  # buy/sell
         order_type = data.get("type", "market")
         price = float(data.get("price", 0))
         size = float(data.get("size", 0))
@@ -163,11 +163,8 @@ def webhook():
 if __name__ == "__main__":
     if RUN_MODE == "auto":
         run_auto_bot()
-    elif RUN_MODE in ("webhook", "sandbox"):
-        if RUN_MODE == "sandbox":
-            print("⚠️ Sandbox mode: forcing DRY_RUN=True")
-            DRY_RUN = True
+    elif RUN_MODE == "webhook":
         print(f"🚀 ScaleViper Webhook Mode starting on port {APP_PORT} (Exchange={EXCHANGE}, DRY_RUN={DRY_RUN})")
         app.run(host="0.0.0.0", port=APP_PORT)
     else:
-        print("❌ Invalid RUN_MODE. Use 'auto', 'webhook', or 'sandbox'.")
+        print("❌ Invalid RUN_MODE. Use 'auto' or 'webhook'.")
