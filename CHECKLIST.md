@@ -7,6 +7,12 @@ This ensures your bot is safe, stable, and ready for simulated trading.
 
 ---
 
+## ✅ Today's Backup Summary
+- [x] Backup created: `backups/backup_20251008_063342`
+- [x] `.env` synced safely and verified
+
+---
+
 ## 1. 🔑 Security & Secrets
 - [ ] `.env` file present (contains `OANDA_API_TOKEN`, `OANDA_ACCOUNT_ID`, `WEBHOOK_SECRET`)
 - [ ] `.gitignore` includes `.env`, logs, DBs, venv, `__pycache__`
@@ -61,10 +67,10 @@ This ensures your bot is safe, stable, and ready for simulated trading.
 ---
 
 ## 7. 🧰 Data & Backups
-- [ ] `trade_logs.db` created & tested
-- [ ] Backups scheduled daily
-- [ ] Restore process tested (recover db < 5 min)
-- [ ] Log rotation confirmed (`logrotate` or systemd)
+- [x] `trade_logs.db` created & tested
+- [x] Backups scheduled daily
+- [x] Restore process tested (recover db < 5 min)
+- [x] Log rotation confirmed (`logrotate` or systemd)
 
 ---
 
