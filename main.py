@@ -1,151 +1,73 @@
+from flask import Flask, request, jsonify
 import os
 import logging
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify
-
-from log_trades import read_trades, read_errors
-from config import (
-    DRY_RUN, DEFAULT_SL_PCT, DEFAULT_TP_PCT,
-    DAILY_PROFIT_TARGET, MAX_DAILY_LOSS, MAX_CONSECUTIVE_LOSSES,
-    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, WATCHLIST
-)
-from signal_engine import calculate_signal_score
 from risk_guard import calculate_position_size, should_continue_trading
-from trade_executor import place_trade
-from daily_manager import load_state, reset_daily_stats_if_needed, update_after_trade, check_trading_allowed
-from notifier import send_telegram_message, build_daily_summary
-from utils.risk import validate_risk
-from utils.logger import log_trade
+from kraken_trade import place_trade
+from log_trades import log_trade
 
-# === Load environment ===
 load_dotenv()
-RUN_MODE = os.getenv("RUN_MODE", "auto").lower()   # "auto", "webhook", or "sandbox"
-WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "change_me_secret")
-APP_PORT = int(os.getenv("APP_PORT", 5003))        # Default 5003 for ScaleViper
-EXCHANGE = os.getenv("DEFAULT_BROKER", "kraken")   # Default Kraken for crypto
-
-# === Logging setup ===
-os.makedirs("logs", exist_ok=True)
-logging.basicConfig(
-    filename="logs/scaleviper.log",
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s: %(message)s"
-)
-
 app = Flask(__name__)
 
-# ===================================================
-# DASHBOARD ROUTE
-# ===================================================
-@app.route("/dashboard", methods=["GET"])
-def dashboard():
-    try:
-        state = load_state()
-        balance = state.get("current_balance", None)
-    except Exception:
-        balance = None
+# === Config ===
+RUN_MODE = os.getenv("RUN_MODE", "webhook")
+DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
+EXCHANGE = os.getenv("EXCHANGE", "kraken")
+APP_PORT = int(os.getenv("APP_PORT", 5003))
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "your-secret")
 
-    return jsonify({
-        "status": {
-            "run_mode": RUN_MODE,
-            "exchange": EXCHANGE,
-            "dry_run": DRY_RUN,
-            "balance": balance
-        },
-        "recent_trades": read_trades(limit=20),
-        "recent_errors": read_errors(limit=20)
-    })
+# === Risk Settings ===
+MAX_DAILY_LOSS = float(os.getenv("MAX_DAILY_LOSS", 3))
+DAILY_PROFIT_TARGET = float(os.getenv("DAILY_PROFIT_TARGET", 10))
+MAX_CONSECUTIVE_LOSSES = int(os.getenv("MAX_CONSECUTIVE_LOSSES", 2))
 
-# ===================================================
-# AUTO MODE
-# ===================================================
-def fetch_indicator_data(pair):
-    """Mock/replace with real exchange or data feed."""
-    return {
-        'rsi': 29,
-        'macd_cross': True,
-        'ema50': 105,
-        'ema200': 100,
-        'atr': 1.4,
-        'atr_avg': 1.1,
-        'volume': 8000,
-        'volume_ma': 5000,
-        'candle_pattern': 'bullish_engulfing',
-        'spread': 0.0015,
-        'price': 1540,
-        'recent_high': 1535
-    }
+# === Logger Setup ===
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s: %(message)s",
+)
 
-def run_auto_bot():
-    print("🤖 ScaleViper Auto Mode starting...")
-    state = load_state()
-    state = reset_daily_stats_if_needed(state)
-
-    allowed, reason = check_trading_allowed(state)
-    print("Bot status:", reason)
-    if not allowed:
-        send_telegram_message(reason)
-        return
-
-    for pair in WATCHLIST:
-        data = fetch_indicator_data(pair)
-        score = calculate_signal_score(data)
-        print(f"{pair} → Signal Score: {score}/10")
-
-        if score < 7:
-            continue
-
-        balance = state['current_balance']
-        price = data['price']
-        stop_loss_pct = DEFAULT_SL_PCT
-
-        size = calculate_position_size(balance, score, price, stop_loss_pct)
-        if size == 0:
-            continue
-
-        result = place_trade(pair=pair, side='buy', price=price, size=size, confidence_score=score)
-        log_trade(result['data'])
-
-        trade_won = True if score >= 8 else False
-        pnl_pct = 2.5 if trade_won else -2.0
-        state = update_after_trade(state, pnl_pct, trade_won)
-
-        allowed, reason = check_trading_allowed(state)
-        if not allowed:
-            print("🔒 Halting after this trade:", reason)
-            break
-
-    summary = build_daily_summary(state)
-    send_telegram_message(summary)
-    print(summary)
-
-# ===================================================
-# WEBHOOK MODE
-# ===================================================
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
-
+    
     if data.get("secret") != WEBHOOK_SECRET:
         logging.warning("❌ Unauthorized webhook attempt.")
         return jsonify({"error": "Invalid secret"}), 403
 
     try:
-        symbol = data.get("symbol")
+        symbol = data.get("pair") or data.get("symbol")
         side = data.get("side")
-        order_type = data.get("type", "market")
         price = float(data.get("price", 0))
-        size = float(data.get("size", 0))
+        score = float(data.get("score", 0))
+        balance = float(data.get("balance", 1000))  # Default for now
+        stop_loss_pct = float(os.getenv("DEFAULT_SL_PCT", 2)) / 100
 
-        logging.info(f"📩 Incoming signal: {data}")
+        size = calculate_position_size(balance, score, price, stop_loss_pct)
 
-        if not validate_risk(symbol, side, price, size):
-            logging.warning("⚠️ Risk validation failed.")
-            return jsonify({"error": "Risk check failed"}), 400
+        # 🚫 Sanity check before proceeding
+        if not symbol or price == 0 or size == 0:
+            logging.warning(f"⚠️ Invalid trade input — Symbol: {symbol}, Price: {price}, Size: {size}")
+            return jsonify({"error": "Size is 0.0 — skipping trade"}), 400
+
+        logging.info(f"📩 Webhook received: {symbol} {side.upper()} | Score: {score}/10 | Price: {price} | Size: {size}")
+
+        # 🛡️ Risk checks
+        allowed, reason = should_continue_trading({})
+        if not allowed:
+            logging.warning(f"🛑 Trade blocked by risk logic: {reason}")
+            return jsonify({"error": reason}), 400
 
         if DRY_RUN:
-            logging.info(f"🧪 DRY_RUN: Simulated {side.upper()} {symbol} @ {price}")
-            trade_result = {"status": "dry_run", "symbol": symbol, "side": side, "price": price}
+            logging.info(f"🧪 DRY_RUN: Simulated {side.upper()} {symbol} @ {price} (size={size}, score={score})")
+            trade_result = {
+                "status": "dry_run",
+                "symbol": symbol,
+                "side": side,
+                "price": price,
+                "size": size,
+                "score": score
+            }
         else:
             trade_result = place_trade(symbol, side, price, size)
 
@@ -157,17 +79,15 @@ def webhook():
         logging.error(f"💥 Error: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
-# ===================================================
-# MAIN ENTRY
-# ===================================================
+# === App Entry ===
 if __name__ == "__main__":
     if RUN_MODE == "auto":
-        run_auto_bot()
+        logging.info("🔁 Auto mode not yet implemented.")
     elif RUN_MODE in ("webhook", "sandbox"):
         if RUN_MODE == "sandbox":
-            print("⚠️ Sandbox mode: forcing DRY_RUN=True")
+            logging.warning("⚠️ Sandbox mode active — forcing DRY_RUN = True")
             DRY_RUN = True
-        print(f"🚀 ScaleViper Webhook Mode starting on port {APP_PORT} (Exchange={EXCHANGE}, DRY_RUN={DRY_RUN})")
+        logging.info(f"🚀 ScaleViper Webhook Mode starting on port {APP_PORT} (Exchange={EXCHANGE}, DRY_RUN={DRY_RUN})")
         app.run(host="0.0.0.0", port=APP_PORT)
     else:
-        print("❌ Invalid RUN_MODE. Use 'auto', 'webhook', or 'sandbox'.")
+        logging.error("❌ Invalid RUN_MODE. Use 'auto', 'webhook', or 'sandbox'.")
