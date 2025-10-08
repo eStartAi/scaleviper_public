@@ -3,7 +3,6 @@
 # === Usage ===
 # ./manage_backups.sh save
 # ./manage_backups.sh promote main 3
-# ./manage_backups.sh promote auto 2
 
 if [ "$1" = "save" ]; then
     timestamp=$(date +%Y%m%d_%H%M%S)
@@ -15,7 +14,6 @@ if [ "$1" = "save" ]; then
     
     # Save full folder snapshot (excluding unwanted dirs)
     rsync -a --exclude 'backups' --exclude '.git' ./ "$path"
-
     echo "✅ Backup complete: $path"
 
     # Detect environment: Kraken (live) or OANDA (practice)
@@ -28,14 +26,14 @@ if [ "$1" = "save" ]; then
     # Auto-update checklist
     ./manage_checklist.sh "$mode" "$path"
 
-    echo -e "\n🟢 Do you want to commit & push this backup to GitHub? (yes/no)"
-    read -r answer
-    if [[ "$answer" == "yes" || "$answer" == "y" ]]; then
-        git add "$path" CHECKLIST.md
-        git commit -m "🔒 Backup + checklist update: $timestamp"
-        ./git_safe_sync.sh
-    else
-        echo "🚫 Git push skipped."
+    # Git commit + sync
+    git add "$path" CHECKLIST.md
+    git commit -m "🔒 Backup + checklist update: $timestamp"
+    ./git_safe_sync.sh
+
+    # Optional: Notify via Telegram
+    if [ -f "notify.py" ] && grep -q "TELEGRAM" .env; then
+        TELEGRAM_MESSAGE="✅ ScaleViper backup & sync complete: $timestamp" python3 notify.py
     fi
 
 elif [ "$1" = "promote" ]; then
