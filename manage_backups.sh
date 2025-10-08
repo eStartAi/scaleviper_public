@@ -1,46 +1,50 @@
 #!/bin/bash
 
-# === Config ===
-BACKUP_DIR="backups"
-TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-TARGET_DIR="$BACKUP_DIR/backup_$TIMESTAMP"
+# === Usage ===
+# ./manage_backups.sh save
+# ./manage_backups.sh promote main 3
+# ./manage_backups.sh promote auto 2
 
-# === Load Telegram vars from .env ===
-source <(grep -v '^#' .env | xargs -d '\n')
+if [ "$1" = "save" ]; then
+    timestamp=$(date +%Y%m%d_%H%M%S)
+    backup_dir="backups"
+    mkdir -p "$backup_dir"
 
-send_telegram() {
-  if [[ "$ENABLE_TELEGRAM_ALERTS" == "true" && -n "$TELEGRAM_BOT_TOKEN" && -n "$TELEGRAM_CHAT_ID" ]]; then
-    curl -s -X POST https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage \
-      -d chat_id="$TELEGRAM_CHAT_ID" \
-      -d text="📦 ScaleViper backup saved: $TARGET_DIR"
-  fi
-}
+    path="$backup_dir/backup_$timestamp"
+    echo "🔒 Saving backup to $path"
+    
+    # Save full folder snapshot (optional: add more exclusions if needed)
+    rsync -a --exclude 'backups' --exclude '.git' ./ "$path"
 
-# === Handle commands ===
-if [[ "$1" == "save" ]]; then
-  echo "🔒 Saving backup to $TARGET_DIR"
+    echo "✅ Backup complete: $path"
 
-  mkdir -p "$TARGET_DIR"
+    # Auto-update checklist (default = live, fallback to practice if env shows OANDA)
+    if grep -q "KRAKEN_API_KEY" .env; then
+        mode="live"
+    else
+        mode="practice"
+    fi
 
-  cp .env "$TARGET_DIR/.env"
-  cp main.py "$TARGET_DIR/main.py"
-  cp trade_logs.db "$TARGET_DIR/trade_logs.db" 2>/dev/null || echo "(ℹ️ trade_logs.db not found)"
-  cp -r utils "$TARGET_DIR/" 2>/dev/null || echo "(ℹ️ utils/ not found)"
+    ./manage_checklist.sh "$mode" "$path"
 
-  echo "✅ Backup complete: $TARGET_DIR"
-  send_telegram
+elif [ "$1" = "promote" ]; then
+    if [ "$#" -ne 3 ]; then
+        echo "Usage: $0 promote [main|auto] <N>"
+        exit 1
+    fi
 
-elif [[ "$1" == "promote" ]]; then
-  TYPE="$2"
-  NUM="$3"
-  if [[ -z "$TYPE" || -z "$NUM" ]]; then
-    echo "❌ Usage: manage_backups.sh promote [main|auto] <num>"
-    exit 1
-  fi
-  echo "🚀 Promoting backup $NUM of type $TYPE (not implemented)"
+    slot="$2"
+    number="$3"
+    src=$(ls -dt backups/backup_* | sed -n "${number}p")
+    dst="$backup_dir/$slot"
+
+    echo "📤 Promoting $src → $dst"
+    rm -rf "$dst"
+    cp -r "$src" "$dst"
+    echo "✅ Promoted to $dst"
+
 else
-  echo "Usage:"
-  echo "  manage_backups.sh save"
-  echo "  manage_backups.sh promote main <num>"
-  echo "  manage_backups.sh promote auto <num>"
+    echo "Usage:"
+    echo "  $0 save"
+    echo "  $0 promote [main|auto] <N>"
 fi
