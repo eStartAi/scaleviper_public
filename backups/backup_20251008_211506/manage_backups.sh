@@ -13,30 +13,19 @@ if [ "$1" = "save" ]; then
     path="$backup_dir/backup_$timestamp"
     echo "🔒 Saving backup to $path"
     
-    # Save full folder snapshot (excluding unwanted dirs)
+    # Save full folder snapshot (optional: add more exclusions if needed)
     rsync -a --exclude 'backups' --exclude '.git' ./ "$path"
 
     echo "✅ Backup complete: $path"
 
-    # Detect environment: Kraken (live) or OANDA (practice)
+    # Auto-update checklist (default = live, fallback to practice if env shows OANDA)
     if grep -q "KRAKEN_API_KEY" .env; then
         mode="live"
     else
         mode="practice"
     fi
 
-    # Auto-update checklist
     ./manage_checklist.sh "$mode" "$path"
-
-    echo -e "\n🟢 Do you want to commit & push this backup to GitHub? (yes/no)"
-    read -r answer
-    if [[ "$answer" == "yes" || "$answer" == "y" ]]; then
-        git add "$path" CHECKLIST.md
-        git commit -m "🔒 Backup + checklist update: $timestamp"
-        ./git_safe_sync.sh
-    else
-        echo "🚫 Git push skipped."
-    fi
 
 elif [ "$1" = "promote" ]; then
     if [ "$#" -ne 3 ]; then
