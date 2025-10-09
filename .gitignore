@@ -75,3 +75,10 @@ trade_logs.db
 .env
 *.db
 *.sqlite
+
+# Secrets
+.env
+*.pem
+*.key
+*.p12
+__pycache__/
