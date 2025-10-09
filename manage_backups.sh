@@ -3,6 +3,7 @@
 # === Usage ===
 # ./manage_backups.sh save
 # ./manage_backups.sh promote main 3
+# ./manage_backups.sh promote auto 2
 
 if [ "$1" = "save" ]; then
     timestamp=$(date +%Y%m%d_%H%M%S)
@@ -11,7 +12,7 @@ if [ "$1" = "save" ]; then
 
     path="$backup_dir/backup_$timestamp"
     echo "🔒 Saving backup to $path"
-    
+
     # Save full folder snapshot (excluding unwanted dirs)
     rsync -a --exclude 'backups' --exclude '.git' ./ "$path"
     echo "✅ Backup complete: $path"
@@ -42,9 +43,10 @@ elif [ "$1" = "promote" ]; then
         exit 1
     fi
 
+    backup_dir="backups"
     slot="$2"
     number="$3"
-    src=$(ls -dt backups/backup_* | sed -n "${number}p")
+    src=$(ls -dt "$backup_dir"/backup_* | sed -n "${number}p")
     dst="$backup_dir/$slot"
 
     echo "📤 Promoting $src → $dst"

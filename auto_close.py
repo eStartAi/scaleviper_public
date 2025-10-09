@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from utils.notify import telegram_notify
 
 # Replace with your actual logic
@@ -50,3 +53,10 @@ def notify_auto_close(closed):
 if __name__ == "__main__":
     closed = run_auto_close()
     notify_auto_close(closed)
+import os
+
+# ✅ Trigger Telegram DM after auto-close (if enabled)
+if os.getenv("ENABLE_TELEGRAM_ALERTS", "false").lower() == "true":
+    os.environ["TELEGRAM_MESSAGE"] = "📉 Auto-close completed for all open positions (21:00 UTC)"
+    os.system("python3 notify.py")
+
