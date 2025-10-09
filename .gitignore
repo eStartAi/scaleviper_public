@@ -87,3 +87,8 @@ __pycache__/
 .env
 *.pem
 __pycache__/
+
+# Secrets
+.env
+*.pem
+__pycache__/
