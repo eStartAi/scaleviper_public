@@ -1,3 +1,59 @@
+==========
+scaleViper
+==========
+
+# ⚡️ ScaleViper — Automated Multi-Broker Trading Bot
+
+[![Mirror Status](https://github.com/eStartAi/scaleviper/actions/workflows/mirror.yml/badge.svg)](https://github.com/eStartAi/scaleviper/actions/workflows/mirror.yml)
+[![Checklist Reset](https://github.com/eStartAi/scaleviper/actions/workflows/reset_checklist.yml/badge.svg)](https://github.com/eStartAi/scaleviper/actions/workflows/reset_checklist.yml)
+
+> 🚀 **ScaleViper** is a high-frequency, risk-managed scalping bot built for **Forex, Crypto, and Stocks** — integrated with **OANDA**, **Kraken**, and more.
+
+---
+
+### 🔧 Core Features
+- 🧠 **AI-Scored Signals** — RSI, MACD, EMA-slope, ATR, and Volume Spike logic  
+- 💸 **Auto Position Sizing** — risk-based calculation tied to account balance  
+- 🛑 **Risk Guards** — daily profit/loss limits and duplicate-trade blockers  
+- 📊 **PnL Logging** — auto-record trades to JSON/SQLite  
+- 📤 **Telegram Alerts** — confirmations, kill-switch, and summaries  
+- ☁️ **CI/CD Automation** — GitHub → EC2 → Kraken/OANDA live deployment  
+
+---
+
+### 🔁 Repository Sync
+- **Private Repo:** [`eStartAi/scaleviper`](https://github.com/eStartAi/scaleviper)  
+- **Public Mirror:** [`eStartAi/oanda_webhook_bot_public`](https://github.com/eStartAi/oanda_webhook_bot_public)  
+- **Last Synced:** <!--SYNC_DATE-->`2025-10-08 21:00 UTC`<!--/SYNC_DATE-->
+
+The public mirror auto-updates every time you push to `main`.
+
+---
+
+### 📘 Quick Start (Local or EC2)
+
+```bash
+# Clone private repo
+git clone https://github.com/eStartAi/scaleviper.git
+cd scaleviper
+
+# Create and activate venv
+python3 -m venv venv && source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run in sandbox / live mode
+python3 main.py
+
+
+=====================================================
+🛠 Maintained by eStartAi / ScaleViper Team
+© 2025 — All rights reserved.
+=====================================================
+
+
+
 # OANDA Webhook Bot
 
 ## Features
