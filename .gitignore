@@ -82,3 +82,8 @@ trade_logs.db
 *.key
 *.p12
 __pycache__/
+
+# Secrets
+.env
+*.pem
+__pycache__/
