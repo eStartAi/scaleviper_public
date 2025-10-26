@@ -1,4 +1,4 @@
-> Last reset: 2025-10-26 20:00:11 UTC by GitHub Actions
+> Last reset: {{timestamp}} UTC by GitHub Actions
 
 # 🔐 Safe Go-Live Checklist (Live Crypto Trading - Kraken)
 
@@ -7,7 +7,7 @@ Use this checklist before switching to **Kraken LIVE API mode**.
 ---
 
 ## ✅ Today's Backup Summary
-- [x] Backup created: backups/backup_20251026_160002
+- [x] Backup created: {{backup_path}}
 - [x] `.env` synced safely and verified
 
 ## 🔒 Security
